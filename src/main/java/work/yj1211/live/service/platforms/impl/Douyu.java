@@ -5,9 +5,12 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import work.yj1211.live.enums.Platform;
-
+import work.yj1211.live.model.LiveRoomInfo;
+import work.yj1211.live.model.Owner;
+import work.yj1211.live.model.platformArea.AreaInfo;
 import work.yj1211.live.service.AreaService;
 import work.yj1211.live.service.platforms.BasePlatform;
 import work.yj1211.live.utils.DouYuOpenApi;
@@ -15,9 +18,6 @@ import work.yj1211.live.utils.HttpUtil;
 import work.yj1211.live.utils.http.HttpContentType;
 import work.yj1211.live.utils.http.HttpRequest;
 import work.yj1211.live.utils.http.HttpResponse;
-import work.yj1211.live.model.LiveRoomInfo;
-import work.yj1211.live.model.Owner;
-import work.yj1211.live.model.platformArea.AreaInfo;
 
 import javax.script.Invocable;
 import javax.script.ScriptEngine;
@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
 public class Douyu implements BasePlatform {
     @Autowired
     private AreaService areaService;
+
+    @Value("${url.douyu}")
+    private String url;
 
     //Douyu清晰度 1流畅；2高清；3超清；4蓝光4M；0蓝光8M或10M
     private List<String> qnList = new ArrayList<>();
@@ -61,26 +64,26 @@ public class Douyu implements BasePlatform {
     }
 
     @Override
-    public void getRealUrl(Map<String, String> urls, String rid){
+    public void getRealUrl(Map<String, String> urls, String rid) {
         List<Integer> rateList = roomRateMap.get(rid);
-        if (null == rateList){
+        if (null == rateList) {
             get_simple_url(rid);
             rateList = roomRateMap.get(rid);
         }
-        try{
-            for (int i = 0; i < rateList.size(); i++){
+        try {
+            for (int i = 0; i < rateList.size(); i++) {
                 String qnString = qnList.get(i);
                 String qn;
-                if ("OD".equals(qnString)){
+                if ("OD".equals(qnString)) {
                     qn = "";
-                }else {
-                    qn = "_"+rateList.get(i).toString();
+                } else {
+                    qn = "_" + rateList.get(i).toString();
                 }
                 urls.put(qnString, get_single_url(rid, qn));
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             roomUrlMap.clear();
             roomRateMap.clear();
         }
@@ -89,19 +92,20 @@ public class Douyu implements BasePlatform {
 
     /**
      * 根据房间号和清晰度获取直播地址
+     *
      * @param roomId
-     * @param qn 清晰度
+     * @param qn     清晰度
      * @return
      */
-    private String get_single_url(String roomId, String qn){
+    private String get_single_url(String roomId, String qn) {
         //获取房间唯一标识，第一次获取时去请求
         String roomUrl = roomUrlMap.computeIfAbsent(roomId, k -> get_simple_url(roomId));
-        String result = "http://hw-tct.douyucdn.cn/live/" + roomUrl + qn + ".flv?uuid=";
-        return result;
+        return url == null ? "http://openhls-tct.douyucdn2.cn/live" : url + roomUrl + qn + ".flv?uuid=";
     }
 
     /**
      * 获取直播间标识地址
+     *
      * @param rid
      * @return
      */
@@ -123,6 +127,7 @@ public class Douyu implements BasePlatform {
 
     /**
      * 获取唯一标识
+     *
      * @param rid
      * @param tt
      * @param ub9
@@ -134,7 +139,7 @@ public class Douyu implements BasePlatform {
         ScriptEngine docjs = new ScriptEngineManager().getEngineByName("javascript");
         docjs.eval(ub9);
         Invocable invocable = (Invocable) docjs;
-        String functionResult = (String)invocable.invokeFunction("ub98484234");
+        String functionResult = (String) invocable.invokeFunction("ub98484234");
         Matcher matcher = Pattern.compile("v=(\\d+)").matcher(functionResult);
         if (!matcher.find()) {
             return null;
@@ -159,7 +164,6 @@ public class Douyu implements BasePlatform {
     }
 
     /**
-     *
      * @param qn
      * @param rid
      * @param tt
@@ -173,14 +177,14 @@ public class Douyu implements BasePlatform {
         params = params + "&cdn=ws-h5&rate=" + qn;
         Map<String, Object> paramsMap = handleParams(params);
 
-        String requestUrl = "https://www.douyu.com/lapi/live/getH5Play/"+rid;
+        String requestUrl = "https://www.douyu.com/lapi/live/getH5Play/" + rid;
         JSONObject response = HttpRequest.create(requestUrl)
                 .appendParameters(paramsMap)
                 .post()
                 .getBodyJson();
 
         JSONObject data = response.getJSONObject("data");
-        if (data == null){
+        if (data == null) {
             return null;
         }
         String url = data.getStr("rtmp_live");
@@ -200,7 +204,6 @@ public class Douyu implements BasePlatform {
     }
 
     /**
-     *
      * @param rid
      * @return
      */
@@ -244,6 +247,7 @@ public class Douyu implements BasePlatform {
 
     /**
      * 获取格式化日期
+     *
      * @param time
      * @param format
      * @return
@@ -256,6 +260,7 @@ public class Douyu implements BasePlatform {
 
     /**
      * 获取斗鱼房间信息
+     *
      * @param roomId
      * @return
      */
@@ -264,7 +269,7 @@ public class Douyu implements BasePlatform {
         String url = DouYuOpenApi.ROOM_INFO + roomId;
         HttpResponse response = HttpRequest.create(url)
                 .setContentType(HttpContentType.FORM).get();
-        if (404 == response.getCode()){
+        if (404 == response.getCode()) {
             return null;
         }
 
@@ -289,28 +294,30 @@ public class Douyu implements BasePlatform {
 
     /**
      * 处理url获取唯一标识
+     *
      * @param url
      * @return
      */
-    private String handleUrl(String url){
+    private String handleUrl(String url) {
         url = url.substring(0, url.indexOf("."));
         return url.split("_")[0];
     }
 
     /**
      * 处理直播间清晰度
+     *
      * @param jsonArray
      * @return
      */
-    private List<Integer> handleRate(JSONArray jsonArray){
+    private List<Integer> handleRate(JSONArray jsonArray) {
         List<Integer> list = new ArrayList<>();
-        for (int i = 0; i < jsonArray.size(); i++){
+        for (int i = 0; i < jsonArray.size(); i++) {
             list.add(jsonArray.getJSONObject(i).getInt("bit"));
         }
         Collections.sort(list, new Comparator<Integer>() {
             @Override
             public int compare(Integer o1, Integer o2) {
-                return o2-o1;
+                return o2 - o1;
             }
         });
         return list;
@@ -318,16 +325,17 @@ public class Douyu implements BasePlatform {
 
     /**
      * 处理params 把String转换成Map
+     *
      * @param params
      * @return
      */
-    private Map<String, Object> handleParams(String params){
+    private Map<String, Object> handleParams(String params) {
         Map<String, Object> paramsMap = new HashMap<>();
         String[] arr = params.split("&");
         String key;
         String value;
         String[] arr1;
-        for (String param : arr){
+        for (String param : arr) {
             arr1 = param.split("=");
             key = arr1[0].trim();
             value = arr1[1].trim();
@@ -338,25 +346,26 @@ public class Douyu implements BasePlatform {
 
     /**
      * 根据分页获取推荐直播间（这个斗鱼api一次请求8个房间）
+     *
      * @param page 页数
      * @param size 每页大小
      * @return
      */
     @Override
-    public List<LiveRoomInfo> getRecommend(int page, int size){
+    public List<LiveRoomInfo> getRecommend(int page, int size) {
         List<LiveRoomInfo> list = new ArrayList<>();
-        int start = size*(page-1)/8 + ((size*(page-1)%8 == 0) ? 0 : 1);
+        int start = size * (page - 1) / 8 + ((size * (page - 1) % 8 == 0) ? 0 : 1);
         start = (start == 0) ? 1 : start;
-        int startIndex = size*(page-1)%8;
-        int end = size*(page)/8 + ((size*(page)%8 == 0) ? 0 : 1);
-        int endIndex = size*(page)%8;
+        int startIndex = size * (page - 1) % 8;
+        int end = size * (page) / 8 + ((size * (page) % 8 == 0) ? 0 : 1);
+        int endIndex = size * (page) % 8;
         List<LiveRoomInfo> listTemp;
-        for(int i = start; i <= end; i++){
-            String url = "https://m.douyu.com/api/room/list?page="+ i + "&type=";
+        for (int i = start; i <= end; i++) {
+            String url = "https://m.douyu.com/api/room/list?page=" + i + "&type=";
             listTemp = requestUrl(url);
             list.addAll(listTemp);
         }
-        list = list.subList(startIndex, list.size()-endIndex);
+        list = list.subList(startIndex, list.size() - endIndex);
         return list;
     }
 
@@ -374,14 +383,14 @@ public class Douyu implements BasePlatform {
             // cate1Info
             JSONArray cate1Array = resultJsonObj.getJSONObject("data").getJSONArray("cate1Info");
             Map<String, String> cate1Map = new HashMap<>();
-            cate1Array.forEach(cate1Item->{
+            cate1Array.forEach(cate1Item -> {
                 JSONObject cate1Obj = (JSONObject) cate1Item;
                 cate1Map.put(cate1Obj.getInt("cate1Id").toString(), cate1Obj.getStr("cate1Name"));
             });
 
             // cate2Info
             JSONArray cate2Array = resultJsonObj.getJSONObject("data").getJSONArray("cate2Info");
-            cate2Array.forEach(cate2Item->{
+            cate2Array.forEach(cate2Item -> {
                 JSONObject cate2Obj = (JSONObject) cate2Item;
                 AreaInfo douyuArea = new AreaInfo();
                 String cate1Id = cate2Obj.getInt("cate1Id").toString();
@@ -404,17 +413,18 @@ public class Douyu implements BasePlatform {
 
     /**
      * 获取url请求的所有房间信息
+     *
      * @param url
      * @return
      */
-    private List<LiveRoomInfo> requestUrl(String url){
+    private List<LiveRoomInfo> requestUrl(String url) {
         List<LiveRoomInfo> list = new ArrayList<>();
         String result = HttpUtil.doGet(url);
         JSONObject resultJsonObj = JSONUtil.parseObj(result);
         if (resultJsonObj.getInt("code") == 0) {
             JSONArray roomList = resultJsonObj.getJSONObject("data").getJSONArray("list");
             Iterator<Object> it = roomList.iterator();
-            while(it.hasNext()){
+            while (it.hasNext()) {
                 JSONObject roomInfo = (JSONObject) it.next();
                 LiveRoomInfo liveRoomInfo = new LiveRoomInfo();
                 liveRoomInfo.setPlatForm("douyu");
@@ -435,22 +445,23 @@ public class Douyu implements BasePlatform {
 
     /**
      * 把形如 "12.3万" 的字符串转为 123XXX 的int
+     *
      * @param number
      * @return
      */
-    public Integer DouyuNumStringToInt(String number){
+    public Integer DouyuNumStringToInt(String number) {
         int num = 0;
-        if(number.contains("万")){
+        if (number.contains("万")) {
             int index = number.indexOf(".");
-            String temp = number.substring(0, index)+number.substring(index+1, number.length()-1);
-            temp = temp + (int)((Math.random()*9+1)*100);
+            String temp = number.substring(0, index) + number.substring(index + 1, number.length() - 1);
+            temp = temp + (int) ((Math.random() * 9 + 1) * 100);
             num = Integer.valueOf(temp);
-        }else if (number.contains("亿")){
+        } else if (number.contains("亿")) {
             int index = number.indexOf(".");
-            String temp = number.substring(0, index)+number.substring(index+1, number.length()-1);
-            temp = temp + (int)((Math.random()*9+1)*1000000);
+            String temp = number.substring(0, index) + number.substring(index + 1, number.length() - 1);
+            temp = temp + (int) ((Math.random() * 9 + 1) * 1000000);
             num = Integer.valueOf(temp);
-        }else {
+        } else {
             return Integer.valueOf(number);
         }
         return num;
@@ -465,21 +476,21 @@ public class Douyu implements BasePlatform {
      * @return
      */
     @Override
-    public List<LiveRoomInfo> getAreaRoom(AreaInfo areaInfo, int page, int size){
+    public List<LiveRoomInfo> getAreaRoom(AreaInfo areaInfo, int page, int size) {
         List<LiveRoomInfo> list = new ArrayList<>();
-        int start = size*(page-1)/8 + 1;
+        int start = size * (page - 1) / 8 + 1;
         start = (start == 0) ? 1 : start;
-        int startIndex = size*(page-1)%8;
-        int end = size*(page)/8 + ((size*(page)%8 == 0) ? 0 : 1);
-        int endIndex = size*(page)%8;
+        int startIndex = size * (page - 1) % 8;
+        int end = size * (page) / 8 + ((size * (page) % 8 == 0) ? 0 : 1);
+        int endIndex = size * (page) % 8;
         List<LiveRoomInfo> listTemp;
-        for(int i = start; i <= end; i++){
-            String url = "https://m.douyu.com/api/room/list?page="+ i +"&type="+areaInfo.getShortName();
+        for (int i = start; i <= end; i++) {
+            String url = "https://m.douyu.com/api/room/list?page=" + i + "&type=" + areaInfo.getShortName();
             listTemp = requestUrl(url);
             list.addAll(listTemp);
         }
-        if (list.size()>size){
-            list = list.subList(startIndex, list.size()-(8-endIndex));
+        if (list.size() > size) {
+            list = list.subList(startIndex, list.size() - (8 - endIndex));
         }
         return list;
     }
@@ -498,13 +509,13 @@ public class Douyu implements BasePlatform {
         paramMap.put("offset", 0);
         paramMap.put("limit", 20);
 
-        String result= cn.hutool.http.HttpUtil.post("https://m.douyu.com/api/search/anchor", paramMap);
+        String result = cn.hutool.http.HttpUtil.post("https://m.douyu.com/api/search/anchor", paramMap);
         JSONObject resultJsonObj = JSONUtil.parseObj(result);
         if (resultJsonObj.getInt("error") == 0) {
             JSONArray ownerList = resultJsonObj.getJSONObject("data").getJSONArray("list");
             Iterator<Object> it = ownerList.iterator();
             int i = 0;
-            while(i < 5 && it.hasNext()) {
+            while (i < 5 && it.hasNext()) {
                 JSONObject responseOwner = (JSONObject) it.next();
                 Owner owner = new Owner();
                 owner.setNickName(responseOwner.getStr("nickname"));

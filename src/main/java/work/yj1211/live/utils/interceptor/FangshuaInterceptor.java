@@ -1,18 +1,17 @@
 package work.yj1211.live.utils.interceptor;
 
+import cn.hutool.cache.Cache;
+import cn.hutool.cache.CacheUtil;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
 import work.yj1211.live.utils.annotation.AccessLimit;
 
-import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.OutputStream;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author guyijie1211
@@ -21,8 +20,8 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 public class FangshuaInterceptor extends HandlerInterceptorAdapter {
-    @Resource
-    RedisTemplate<String, Object> redisTemplate;
+
+    private Cache<String, Integer> cache = CacheUtil.newTimedCache(1000);
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -50,18 +49,18 @@ public class FangshuaInterceptor extends HandlerInterceptorAdapter {
             return true;
         }
         // 从缓存中获取，当前这个请求访问了几次
-        Integer redisCount = (Integer) redisTemplate.opsForValue().get(limitKey);
-        if (redisCount == null) {
+        Integer count = cache.get(limitKey);
+        if (count == null) {
             //初始 次数
-            redisTemplate.opsForValue().set(limitKey, 1, accessLimit.seconds(), TimeUnit.SECONDS);
+            cache.put(limitKey, 1, accessLimit.seconds() * 1000L);
         } else {
-            if (redisCount.intValue() >= accessLimit.maxCount()) {
+            if (count >= accessLimit.maxCount()) {
                 log.warn("【防刷】uid:[{}]  超过请求限制，拦截！！", limitKey);
                 return true;
             }
 //            log.info("【防刷】uid:[{}]  [{}]秒内第[{}]次搜索", limitKey, accessLimit.seconds(), redisCount.intValue()+1);
             // 次数自增
-            redisTemplate.opsForValue().increment(limitKey);
+            cache.put(limitKey, count + 1);
         }
         return false;
     }
